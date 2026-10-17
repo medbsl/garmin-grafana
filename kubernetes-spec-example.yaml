@@ -1,8 +1,15 @@
+# Example only: review resource limits and storage permissions before applying.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: garmin-grafana
+---
 # There is support for influxdb v3 (core) OSS, but it's highly recommended to use Influxdb 1.x versions with this project. 
 
 apiVersion: v1
 kind: Secret
 metadata:
+  namespace: garmin-grafana
   name: garmin-grafana-secret
 type: Opaque
 stringData:
@@ -16,6 +23,7 @@ stringData:
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  namespace: garmin-grafana
   name: fetch-data-config
 data:
   INFLUXDB_HOST: influxdb
@@ -42,6 +50,7 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  namespace: garmin-grafana
   name: influxdb-config
 data:
   INFLUXDB_DB: GarminStats
@@ -59,6 +68,7 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  namespace: garmin-grafana
   name: influxdb-pvc
 spec:
   accessModes:
@@ -70,6 +80,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  namespace: garmin-grafana
   name: garmin-token-pvc
 spec:
   accessModes:
@@ -82,6 +93,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: influxdb
+  namespace: garmin-grafana
 spec:
   replicas: 1
   selector:
@@ -93,35 +105,68 @@ spec:
         app: influxdb
     spec:
       containers:
-        - name: influxdb
-          image: influxdb:1.11
-          envFrom:
-            - configMapRef:
-                name: influxdb-config
-          env:
-            - name: INFLUXDB_USER_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: garmin-grafana-secret
-                  key: INFLUXDB_PASSWORD
-            - name: INFLUXDB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: garmin-grafana-secret
-                  key: INFLUXDB_USERNAME
-          ports:
-            - containerPort: 8086
-          volumeMounts:
-            - name: influxdb-storage
-              mountPath: /var/lib/influxdb
-      volumes:
+      - name: influxdb
+        image: influxdb:1.11
+        envFrom:
+        - configMapRef:
+            name: influxdb-config
+        env:
+        - name: INFLUXDB_USER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: garmin-grafana-secret
+              key: INFLUXDB_PASSWORD
+        - name: INFLUXDB_USER
+          valueFrom:
+            secretKeyRef:
+              name: garmin-grafana-secret
+              key: INFLUXDB_USERNAME
+        ports:
+        - containerPort: 8086
+        volumeMounts:
         - name: influxdb-storage
-          persistentVolumeClaim:
-            claimName: influxdb-pvc
+          mountPath: /var/lib/influxdb
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: '2'
+            memory: 1Gi
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8086
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8086
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      volumes:
+      - name: influxdb-storage
+        persistentVolumeClaim:
+          claimName: influxdb-pvc
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+  strategy:
+    type: Recreate
 ---
 apiVersion: v1
 kind: Service
 metadata:
+  namespace: garmin-grafana
   name: influxdb
 spec:
   selector:
@@ -135,6 +180,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: garmin-fetch-data
+  namespace: garmin-grafana
 spec:
   replicas: 1
   selector:
@@ -146,20 +192,44 @@ spec:
         app: garmin-fetch-data
     spec:
       containers:
-        - name: garmin-fetch-data
-          image: thisisarpanghosh/garmin-fetch-data:latest
-          envFrom:
-            - configMapRef:
-                name: fetch-data-config
-            - secretRef:
-                name: garmin-grafana-secret
-          volumeMounts:
-            - name: garmin-token
-              mountPath: /home/appuser/.garminconnect
-      volumes:
+      - name: garmin-fetch-data
+        image: thisisarpanghosh/garmin-fetch-data:latest
+        envFrom:
+        - configMapRef:
+            name: fetch-data-config
+        - secretRef:
+            name: garmin-grafana-secret
+        volumeMounts:
         - name: garmin-token
-          persistentVolumeClaim:
-            claimName: garmin-token-pvc
+          mountPath: /home/appuser/.garminconnect
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 1000
+          runAsGroup: 1000
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: '2'
+            memory: 1Gi
+      volumes:
+      - name: garmin-token
+        persistentVolumeClaim:
+          claimName: garmin-token-pvc
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 1000
+  strategy:
+    type: Recreate
 ---
 ######################################################################################################
 # Remove all below if you already have a Grafana instance running and don't need to set up a new one #
@@ -167,6 +237,7 @@ spec:
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  namespace: garmin-grafana
   name: grafana-config
 data:
   GF_SECURITY_ADMIN_USER: "admin"
@@ -183,6 +254,7 @@ data:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  namespace: garmin-grafana
   name: grafana-data
 spec:
   accessModes:
@@ -195,6 +267,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: grafana
+  namespace: garmin-grafana
 spec:
   replicas: 1
   selector:
@@ -206,24 +279,61 @@ spec:
         app: grafana
     spec:
       containers:
-        - name: grafana
-          image: grafana/grafana:latest
-          envFrom:
-            - configMapRef:
-                name: grafana-config
-          ports:
-            - containerPort: 3000
-          volumeMounts:
-            - name: grafana-data
-              mountPath: /var/lib/grafana
-      volumes:
+      - name: grafana
+        image: grafana/grafana:latest
+        envFrom:
+        - configMapRef:
+            name: grafana-config
+        ports:
+        - containerPort: 3000
+        volumeMounts:
         - name: grafana-data
-          persistentVolumeClaim:
-            claimName: grafana-data
+          mountPath: /var/lib/grafana
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 472
+          runAsGroup: 472
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: '2'
+            memory: 1Gi
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      volumes:
+      - name: grafana-data
+        persistentVolumeClaim:
+          claimName: grafana-data
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+        fsGroup: 472
+  strategy:
+    type: Recreate
 ---
 apiVersion: v1
 kind: Service
 metadata:
+  namespace: garmin-grafana
   name: grafana
 spec:
   selector:
@@ -233,3 +343,54 @@ spec:
       targetPort: 3000
       nodePort: 31007
   type: NodePort
+---
+# Collector has no inbound service. Its outbound Garmin and InfluxDB access remains available.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: collector-no-ingress
+  namespace: garmin-grafana
+spec:
+  podSelector:
+    matchLabels:
+      app: garmin-fetch-data
+  policyTypes: [Ingress]
+  ingress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: influxdb-clients
+  namespace: garmin-grafana
+spec:
+  podSelector:
+    matchLabels:
+      app: influxdb
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: garmin-fetch-data
+        - podSelector:
+            matchLabels:
+              app: grafana
+      ports:
+        - protocol: TCP
+          port: 8086
+---
+# Keep the existing Grafana NodePort available; restrict ingress to its HTTP port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: grafana-http
+  namespace: garmin-grafana
+spec:
+  podSelector:
+    matchLabels:
+      app: grafana
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - protocol: TCP
+          port: 3000

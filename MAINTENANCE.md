@@ -52,3 +52,23 @@ waived. Kubernetes examples retain security findings and have not been tested on
 a cluster. There is no fabricated HTTP health endpoint for this background
 collector. Live Garmin authentication, MFA and production ingestion are not
 exercised by the offline tests. No stored credentials are rotated by these changes.
+
+## Kubernetes example hardening — 2026-10-17
+
+The example now uses a dedicated namespace, disables Kubernetes API token
+mounts, drops Linux capabilities, prevents privilege escalation, sets resource
+requests/limits and RuntimeDefault seccomp, and adds service health probes.
+Collector and Grafana use their existing image UIDs with matching volume groups.
+Single-replica deployments use Recreate to avoid competing writers on their PVCs.
+Ingress policies deny inbound collector traffic, restrict InfluxDB to the two
+in-namespace clients, and preserve Grafana's HTTP NodePort access. Egress remains
+available for Garmin, DNS and plugin downloads.
+
+Checkov 3.3.29 reports 257 passed and 16 failed checks, zero skips and zero parsing
+errors (previously 68 failures). Existing secrets/configuration values, PVC specs,
+service ports, image references and mounts were checked for preservation. This
+was static validation, not a live Kubernetes deployment. Review memory limits
+against data volume and configure a NetworkPolicy-capable CNI before applying.
+Moving an existing default-namespace installation requires a separate storage
+migration; do not apply this as an in-place namespace migration. No production
+resources or credentials were changed. Remaining findings are not exempted.
