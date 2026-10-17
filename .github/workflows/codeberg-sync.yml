@@ -5,8 +5,12 @@ on:
       - '**'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   call-codeberg-sync:
+    if: ${{ github.repository == 'arpanghosh8453/garmin-grafana' }}
     uses: arpanghosh8453/codeberg-sync/.github/workflows/codeberg-sync.yml@main
     secrets:
       CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}

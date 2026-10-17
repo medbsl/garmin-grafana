@@ -1,0 +1,17 @@
+name: Maintained fork tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compatibility:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Build locked collector image
+        run: docker build -t garmin-collector:test .
+      - name: Test without network access or credentials
+        run: docker run --rm --network none -v "$PWD/tests:/tests:ro" garmin-collector:test python -m unittest discover -s /tests -v

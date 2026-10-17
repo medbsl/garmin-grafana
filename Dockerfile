@@ -1,31 +1,19 @@
 # syntax=docker/dockerfile:1
-
-FROM ghcr.io/astral-sh/uv:0.6.17-python3.13-bookworm-slim AS build
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
+FROM python:3.13-slim-trixie@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS build
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
-
+RUN python -m pip install --no-cache-dir uv==0.13.1
 COPY pyproject.toml uv.lock ./
-RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential git \
- && rm -rf /var/lib/apt/lists/*
-RUN uv sync --locked
+RUN uv sync --locked --no-dev --no-install-project
 
-FROM python:3.13-slim-bookworm AS runtime
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH"
-
+FROM python:3.13-slim-trixie@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS runtime
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
-
-RUN groupadd --gid 1000 appuser && useradd --uid 1000 --gid appuser --shell /bin/bash --create-home appuser
-
-COPY --chown=appuser:appuser --from=build /app/.venv /app/.venv
-COPY --chown=appuser:appuser src /app/
-
-USER appuser
-
+RUN groupadd --gid 1000 appuser \
+    && useradd --uid 1000 --gid appuser --shell /bin/sh --create-home appuser \
+    && python -m pip uninstall -y pip \
+    && rm -rf /usr/local/lib/python3.13/ensurepip
+COPY --from=build /app/.venv /app/.venv
+COPY src /app/
+USER 1000:1000
 CMD ["python", "garmin_grafana/garmin_fetch.py"]

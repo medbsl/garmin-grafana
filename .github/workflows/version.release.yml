@@ -10,6 +10,9 @@ env:
   IMAGE_TAG: ${{ github.ref_name }}
   IMAGE_REPO: thisisarpanghosh
 
+permissions:
+  contents: read
+
 jobs:
   build_and_push:
     name: Build Multi-Arch Docker Image and Push to Docker Hub & GHCR
