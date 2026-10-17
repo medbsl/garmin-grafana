@@ -106,7 +106,7 @@ spec:
     spec:
       containers:
       - name: influxdb
-        image: influxdb:1.11
+        image: influxdb:1.11@sha256:92f4fce0dae23c23607710dde9875885a1a26763f900afff4ee8dae42e0cfc91
         envFrom:
         - configMapRef:
             name: influxdb-config
@@ -126,10 +126,16 @@ spec:
         volumeMounts:
         - name: influxdb-storage
           mountPath: /var/lib/influxdb
+        - name: tmp
+          mountPath: /tmp
         imagePullPolicy: Always
         securityContext:
           allowPrivilegeEscalation: false
           privileged: false
+          runAsNonRoot: true
+          runAsUser: 1500
+          runAsGroup: 1500
+          readOnlyRootFilesystem: true
           capabilities:
             drop:
             - ALL
@@ -153,11 +159,14 @@ spec:
           initialDelaySeconds: 60
           periodSeconds: 30
       volumes:
+      - name: tmp
+        emptyDir: {}
       - name: influxdb-storage
         persistentVolumeClaim:
           claimName: influxdb-pvc
       automountServiceAccountToken: false
       securityContext:
+        fsGroup: 1500
         seccompProfile:
           type: RuntimeDefault
   strategy:

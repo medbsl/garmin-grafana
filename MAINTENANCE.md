@@ -72,3 +72,11 @@ against data volume and configure a NetworkPolicy-capable CNI before applying.
 Moving an existing default-namespace installation requires a separate storage
 migration; do not apply this as an in-place namespace migration. No production
 resources or credentials were changed. Remaining findings are not exempted.
+
+A subsequent compatibility test verified InfluxDB 1.11 initializing a disposable
+`offline_test` database as its image UID/GID 1500 with a read-only root filesystem,
+all capabilities dropped and no-new-privileges. The example now pins that tested
+image digest, uses UID/GID/fsGroup 1500, and mounts a writable /tmp separately from
+the existing data PVC. Checkov now reports 260 passed, 13 failed, zero skipped and
+zero parsing errors. Existing data-volume ownership must be reviewed before any
+cluster migration; this test did not access existing databases.
