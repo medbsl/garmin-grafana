@@ -321,7 +321,7 @@ Please read detailed guide on this from the [influxDB documentation for backup a
 - The issued session token is apparently [valid only for 1 year](https://github.com/cyberjunky/python-garminconnect/issues/213) or less. Therefore, the automatic fetch will fail after the token expires. If you are using it more than one year, you may need to stop, remove and redeploy the container (follow the same instructions for initial setup, you will be asked for the username and password + 2FA code again). if you are not using MFA/2FA (SMS or email one time code), you can use the `GARMINCONNECT_EMAIL` and `GARMINCONNECT_BASE64_PASSWORD` (remember, this is [base64 encoded](http://base64encode.org/) password, not plaintext) ENV variables in the compose file to give this info directly, so the script will be able to re-generate the tokens once they expire. Unfortunately, if you are using MFA/2FA, you need to enter the one time code manually after rebuilding the container every year when the tokens expire to keep the script running (Once the session token is valid again, the script will automatically back-fill the data you missed)
 - If you are getting `429 Client Error` after a few login tries during the initial setup, this is an indication that you are being rate limited based on your public IP. Garmin has a set limit for repeated login attempts from the same IP address to protect your account. You can wait for a few hours or a day, or switch to a different wifi network outside your home (will give you a new public IP) or just simply use mobile hotspot (will give you a new public IP as well) for the initial login attempt. Similar behavior is discussed in the [python-garminconnect issue tracker](https://github.com/cyberjunky/python-garminconnect/issues).
 - Running into `401 Client Error` when trying to login for the first time? make sure you are using the correct username and password for your account. If you enter it at runtime, it should be in plaintext but if you add it with environment variables in the docker compose stack, it must be [Base64 encoded](https://www.base64encode.org/). if you are 100% sure you are using the right credentials, and still get this error, it's probably due to the fact that you are connected to a VPN network which is preventing the log in request (see issue [#20](https://github.com/arpanghosh8453/garmin-grafana/issues/20)). If you are not using a VPN, then please try running the container with mobile hotspot network or with a VPN exit tunnel (both gives you a different public IP) - you need to try this from a different network somehow.
-- If you want to bind mount the docker volumes for the `garmin-fetch-data` container, please keep in mind that the script runs with the internal user `appuser` with uid and gid set as 1000. So please chown the bind mount folder accordingly as stated in the above instructions. Also, `grafana` container requires the bind mount folders to be owned by `472:472` and `influxdb:1.11` container requires the bind mount folders to be owned by `1500:1500`. If none of this solves the `Permission Denied` issue for you, you can change the bind mount folder permission as `777` with `chmod -R 777 garminconnect-tokens`. Another solution could be to add `user: root` in the container configuration to run it as root instead of default `appuser` (this option has security considerations)
+- For Compose bind mounts, preserve the configured image user and grant write access only to the required data directory: collector `1000:1000`, Grafana `472:472`, InfluxDB `1500:1500`. Back up existing data before changing ownership. Do not make token storage world-writable or run the service as root to work around a permission error. The Kubernetes example below uses a separate UID/GID policy.
 - If the Activities details (GPS, Pace, HR, Altitude) are not appearing on the dashboard, make sure to select an Activity listed on the top left corner of the Dashboard (In the `Activity with GPS` variable dropdown). If you see no values are available there, but in the log you see the activities are being pulled successfully, then it's due to a Grafana Bug. Go to the dashboard variable settings, and please ensure the correct datasource is selected for the variable and the query is set to `SHOW TAG VALUES FROM "ActivityGPS" WITH KEY = "ActivitySelector" WHERE $timeFilter`. Once you set this properly after the dashboard import, the values should show up correctly in the dropdown and you will be able to select specific Activity and view it's stats on the dashboard.
 - Missing the battery levels data on the dashboard? Check out the section titled `Collecting periodic watch battery levels` to know how to set it up.
 
@@ -370,3 +370,25 @@ Too complicated to self host just to see your FIT file activity data? What about
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=arpanghosh8453/garmin-grafana&type=Date)](https://www.star-history.com/#arpanghosh8453/garmin-grafana&Date)
+
+## Hardened Kubernetes example
+
+The example pins Grafana 12.4.9 and the upstream collector by immutable digest.
+Pinning makes the artifact reproducible; it does not certify it as vulnerability-free
+or replace it with this fork's locally built collector. All three workloads use
+UID/GID 10001, a read-only root filesystem and explicit writable storage mounts.
+Compose defaults and running deployments are unchanged.
+
+Before applying to an existing cluster, back up the data and verify that the CSI
+driver supports `fsGroup: 10001` and that existing PVC contents remain writable
+by that group. Do not recursively change production ownership without reviewing
+the existing deployment. Token and database PVCs are retained. FIT downloads use
+an `emptyDir`, matching their previous ephemeral container lifetime; configure a
+dedicated PVC if `KEEP_FIT_FILES` must survive pod replacement.
+
+Run `python tests/kubernetes_runtime.py` with Docker and PyYAML 6.0.3 to check the
+pinned images with networking disabled, root-owned group-writable disposable
+storage, UID 10001 and a read-only root filesystem. The checks exercise InfluxDB
+and Grafana HTTP health endpoints and collector imports/storage with a mocked
+InfluxDB client. They do not authenticate to Garmin, verify live plugin downloads,
+or substitute for a Kubernetes/CSI integration test.

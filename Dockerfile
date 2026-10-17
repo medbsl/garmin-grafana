@@ -9,7 +9,10 @@ RUN uv sync --locked --no-dev --no-install-project
 FROM python:3.13-slim-trixie@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
-RUN groupadd --gid 1000 appuser \
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid appuser --shell /bin/sh --create-home appuser \
     && python -m pip uninstall -y pip \
     && rm -rf /usr/local/lib/python3.13/ensurepip

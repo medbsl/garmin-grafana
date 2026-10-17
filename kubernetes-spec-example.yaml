@@ -133,8 +133,8 @@ spec:
           allowPrivilegeEscalation: false
           privileged: false
           runAsNonRoot: true
-          runAsUser: 1500
-          runAsGroup: 1500
+          runAsUser: 10001
+          runAsGroup: 10001
           readOnlyRootFilesystem: true
           capabilities:
             drop:
@@ -166,7 +166,7 @@ spec:
           claimName: influxdb-pvc
       automountServiceAccountToken: false
       securityContext:
-        fsGroup: 1500
+        fsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
   strategy:
@@ -202,7 +202,10 @@ spec:
     spec:
       containers:
       - name: garmin-fetch-data
-        image: thisisarpanghosh/garmin-fetch-data:latest
+        env:
+        - name: HOME
+          value: /home/appuser
+        image: thisisarpanghosh/garmin-fetch-data@sha256:88522b41c940ccc0f70e21e1fdee78d9ac2d7d26814d1edd03043aebd9f4b000
         envFrom:
         - configMapRef:
             name: fetch-data-config
@@ -211,6 +214,10 @@ spec:
         volumeMounts:
         - name: garmin-token
           mountPath: /home/appuser/.garminconnect
+        - name: fit-files
+          mountPath: /home/appuser/fit_filestore
+        - name: tmp
+          mountPath: /tmp
         imagePullPolicy: Always
         securityContext:
           allowPrivilegeEscalation: false
@@ -219,8 +226,9 @@ spec:
             drop:
             - ALL
           runAsNonRoot: true
-          runAsUser: 1000
-          runAsGroup: 1000
+          runAsUser: 10001
+          runAsGroup: 10001
+          readOnlyRootFilesystem: true
         resources:
           requests:
             cpu: 100m
@@ -229,6 +237,10 @@ spec:
             cpu: '2'
             memory: 1Gi
       volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: fit-files
+        emptyDir: {}
       - name: garmin-token
         persistentVolumeClaim:
           claimName: garmin-token-pvc
@@ -236,7 +248,7 @@ spec:
       securityContext:
         seccompProfile:
           type: RuntimeDefault
-        fsGroup: 1000
+        fsGroup: 10001
   strategy:
     type: Recreate
 ---
@@ -289,7 +301,7 @@ spec:
     spec:
       containers:
       - name: grafana
-        image: grafana/grafana:latest
+        image: grafana/grafana:12.4.9@sha256:9b58461280b4d2992d4399823c9427d0fcf5f0fd7f376c93f2dea876158b867b
         envFrom:
         - configMapRef:
             name: grafana-config
@@ -298,6 +310,8 @@ spec:
         volumeMounts:
         - name: grafana-data
           mountPath: /var/lib/grafana
+        - name: tmp
+          mountPath: /tmp
         imagePullPolicy: Always
         securityContext:
           allowPrivilegeEscalation: false
@@ -306,8 +320,9 @@ spec:
             drop:
             - ALL
           runAsNonRoot: true
-          runAsUser: 472
-          runAsGroup: 472
+          runAsUser: 10001
+          runAsGroup: 10001
+          readOnlyRootFilesystem: true
         resources:
           requests:
             cpu: 100m
@@ -328,6 +343,8 @@ spec:
           initialDelaySeconds: 60
           periodSeconds: 30
       volumes:
+      - name: tmp
+        emptyDir: {}
       - name: grafana-data
         persistentVolumeClaim:
           claimName: grafana-data
@@ -335,7 +352,7 @@ spec:
       securityContext:
         seccompProfile:
           type: RuntimeDefault
-        fsGroup: 472
+        fsGroup: 10001
   strategy:
     type: Recreate
 ---
